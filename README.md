@@ -1,7 +1,7 @@
 # Jet Drag and Drop
 
 <p align="center">
-  <img src="https://cdn.discordapp.com/attachments/1079486043197292555/1259639991441690645/jet-dnd.gif?ex=668c6aa8&is=668b1928&hm=5dbd0b9ff25a2422a202ec9945175ec119679011811726b9e0729964064a4df7&" alt="jet-dnd-gif">
+  <img src="https://cdn.discordapp.com/attachments/1079486043197292555/1259639991441690645/jet-dnd.gif" alt="jet-dnd-gif">
 </p>
 
 <p align="center">
