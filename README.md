@@ -1,10 +1,6 @@
 # Jet Drag and Drop
 
 <p align="center">
-  <img src="https://cdn.discordapp.com/attachments/1079486043197292555/1259639991441690645/jet-dnd.gif" alt="jet-dnd-gif">
-</p>
-
-<p align="center">
   <strong>Um projeto simples para criar elementos arrastáveis utilizando HTML, CSS e JavaScript.</strong><br>
   <strong>A simple project to create draggable elements using HTML, CSS, and JavaScript.</strong>
 </p>
