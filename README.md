@@ -1,5 +1,7 @@
 # Jet Drag and Drop
 
+![jet-dnd-ezgif com-resize](https://github.com/JetoG/Jet-DnD/assets/74020459/ddc71476-f34d-4e23-8713-68049b7d01f0)
+
 <p align="center">
   <strong>Um projeto simples para criar elementos arrastáveis utilizando HTML, CSS e JavaScript.</strong><br>
   <strong>A simple project to create draggable elements using HTML, CSS, and JavaScript.</strong>
