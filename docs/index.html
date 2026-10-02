@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="description" content="Jet DnD — arraste e solte em JavaScript puro, sem dependências." />
+		<!-- Ícone da aba: um quadrado azul com os "pontinhos" da alça, desenhado em SVG dentro do próprio HTML (sem arquivo extra) -->
+		<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232563eb'/%3E%3Cg fill='white'%3E%3Ccircle cx='6' cy='4' r='1.2'/%3E%3Ccircle cx='10' cy='4' r='1.2'/%3E%3Ccircle cx='6' cy='8' r='1.2'/%3E%3Ccircle cx='10' cy='8' r='1.2'/%3E%3Ccircle cx='6' cy='12' r='1.2'/%3E%3Ccircle cx='10' cy='12' r='1.2'/%3E%3C/g%3E%3C/svg%3E" />
+		<link rel="stylesheet" href="style.css" />
+		<title>Jet DnD — Demo</title>
+	</head>
+	<body>
+		<!--
+			Classes com prefixo jt- são as que a lib usa:
+			  .jt-draggable  → elemento que pode ser arrastado
+			  .jt-dropzone   → onde ele pode ser solto
+			  .jt-handle     → alça (opcional): se existir, só ela arrasta
+			Todas as outras classes (card, column, tile...) são só o visual desta demo.
+		-->
+		<div class="page">
+			<header class="header">
+				<div>
+					<h1 class="logo">Jet DnD</h1>
+					<p class="tagline" data-i18n="tagline">Arraste e solte em JavaScript puro, sem dependências. Funciona com mouse, toque e caneta.</p>
+					<p class="tagline keys" data-i18n="keys">Pelo teclado: Tab para focar um card, Espaço para pegar, setas para mover (↑↓ na coluna, ←→ entre colunas), Espaço para soltar e Esc para cancelar.</p>
+				</div>
+				<div class="header-actions">
+					<a class="btn" id="docs-link" href="https://github.com/JetoG/Jet-DnD#readme" data-i18n="docs">Documentação</a>
+					<a class="btn" href="https://github.com/JetoG/Jet-DnD" data-i18n="github">Ver no GitHub</a>
+					<div class="lang-toggle" role="group" aria-label="Idioma / Language">
+						<button type="button" class="btn" data-lang="pt" aria-pressed="true">PT</button>
+						<button type="button" class="btn" data-lang="en" aria-pressed="false">EN</button>
+					</div>
+				</div>
+			</header>
+
+			<!-- Exemplo 1: quadro de tarefas -->
+			<section class="section">
+				<h2 data-i18n="kanban.title">Quadro de tarefas</h2>
+				<p class="desc" data-i18n="kanban.desc">Arraste as tarefas entre as colunas ou mude a ordem dentro de uma coluna. A coluna "Feito" só aceita tarefas que vieram de "Fazendo". No celular, segure o card por um instante para pegá-lo.</p>
+
+				<div class="kanban">
+					<div class="column jt-dropzone" data-name="col.todo">
+						<h3 class="column-title"><span data-i18n="col.todo">A fazer</span> <span class="count"></span></h3>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task1.title">Criar tela de login</div>
+							<div class="card-text" data-i18n="task1.text">Formulário com e-mail e senha</div>
+						</div>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task2.title">Configurar banco de dados</div>
+							<div class="card-text" data-i18n="task2.text">Tabelas de usuários e tarefas</div>
+						</div>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task3.title">Escrever testes</div>
+							<div class="card-text" data-i18n="task3.text">Cobrir o fluxo de cadastro</div>
+						</div>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task4.title">Revisar textos</div>
+							<div class="card-text" data-i18n="task4.text">Corrigir erros de digitação</div>
+						</div>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task5.title">Ícones novos</div>
+							<div class="card-text" data-i18n="task5.text">Exportar em SVG</div>
+						</div>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task6.title">Página de ajuda</div>
+							<div class="card-text" data-i18n="task6.text">Perguntas frequentes</div>
+						</div>
+					</div>
+
+					<div class="column jt-dropzone" data-name="col.doing">
+						<h3 class="column-title"><span data-i18n="col.doing">Fazendo</span> <span class="count"></span></h3>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task7.title">Arrastar e soltar</div>
+							<div class="card-text" data-i18n="task7.text">Reordenar os cards</div>
+						</div>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="task8.title">Modo escuro</div>
+							<div class="card-text" data-i18n="task8.text">Seguir o tema do sistema</div>
+						</div>
+					</div>
+
+					<div class="column jt-dropzone" data-name="col.done" data-jt-drop="marcarComoFeito">
+						<h3 class="column-title"><span data-i18n="col.done">Feito</span> <span class="count"></span></h3>
+						<div class="card jt-draggable is-done">
+							<div class="card-title" data-i18n="task9.title">Publicar a demo</div>
+							<div class="card-text" data-i18n="task9.text">GitHub Pages</div>
+						</div>
+					</div>
+
+					<!-- Painel de eventos: mostra cada evento jt-drop na página (preenchido pelo demo.js) -->
+					<aside class="log">
+						<div class="log-header">
+							<h3 class="column-title" data-i18n="log.title">Eventos</h3>
+							<button type="button" class="btn btn-small" id="log-clear" data-i18n="log.clear">Limpar</button>
+						</div>
+						<p class="log-empty" id="log-empty" data-i18n="log.empty">Mova um card para ver o evento jt-drop aqui.</p>
+						<ul class="log-list" id="log-list"></ul>
+						<!-- Escondido na tela: o leitor de tela anuncia só o evento mais novo (preenchido pelo demo.js) -->
+						<p class="visually-hidden" id="log-status" aria-live="polite"></p>
+						<button type="button" class="btn btn-primary" id="add-card" data-i18n="addCard">+ Adicionar card</button>
+						<p class="hint" data-i18n="addCard.hint">Cards criados depois que a página carregou também arrastam.</p>
+					</aside>
+				</div>
+			</section>
+
+			<!-- Exemplo 2: cards com alça -->
+			<section class="section">
+				<h2 data-i18n="handle.title">Cards com alça</h2>
+				<p class="desc" data-i18n="handle.desc">Só a alça arrasta. O resto do card é texto normal: dá para selecionar e copiar. A alça pode ser qualquer elemento, e um card pode ter mais de uma.</p>
+
+				<div class="two-lists">
+					<div class="column jt-dropzone" data-name="list.a">
+						<h3 class="column-title" data-i18n="list.a">Lista A</h3>
+						<div class="card jt-draggable">
+							<span class="jt-handle" title="Arrastar" data-i18n-title="handle.label" aria-hidden="true">⠿</span>
+							<div class="card-title" data-i18n="note1.title">Selecione este texto</div>
+							<div class="card-text" data-i18n="note1.text">Clique e arraste aqui para selecionar. Para mover o card, use a alça no canto.</div>
+						</div>
+						<div class="card jt-draggable">
+							<span class="jt-handle" title="Arrastar" data-i18n-title="handle.label" aria-hidden="true">⠿</span>
+							<div class="card-title" data-i18n="note2.title">Copie e cole</div>
+							<div class="card-text" data-i18n="note2.text">Útil quando o card tem informações que a pessoa precisa copiar, como um código ou um endereço.</div>
+						</div>
+					</div>
+
+					<div class="column jt-dropzone" data-name="list.b">
+						<h3 class="column-title" data-i18n="list.b">Lista B</h3>
+						<div class="card jt-draggable">
+							<span class="jt-handle" title="Arrastar" data-i18n-title="handle.label" aria-hidden="true">⠿</span>
+							<div class="card-title" data-i18n="note3.title">No celular</div>
+							<div class="card-text" data-i18n="note3.text">Arrastando pela alça, o card pega na hora. Deslizando pelo resto do card, a página rola normalmente.</div>
+						</div>
+						<!-- A alça pode ser qualquer elemento: aqui é o título (.title-handle, ligado pela opção handle no demo.js) -->
+						<div class="card jt-draggable">
+							<div class="card-title title-handle" data-i18n="note4.title">Arraste pelo título</div>
+							<div class="card-text" data-i18n="note4.text">Aqui a alça é o próprio título. Este texto continua selecionável.</div>
+						</div>
+						<!-- Mais de uma alça no mesmo card: o ícone e o título -->
+						<div class="card jt-draggable">
+							<span class="jt-handle" title="Arrastar" data-i18n-title="handle.label" aria-hidden="true">⠿</span>
+							<div class="card-title title-handle" data-i18n="note5.title">Duas alças</div>
+							<div class="card-text" data-i18n="note5.text">Dá para arrastar pelo ícone ou pelo título.</div>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- Exemplo 3: grade -->
+			<section class="section">
+				<h2 data-i18n="grid.title">Grade</h2>
+				<p class="desc" data-i18n="grid.desc">A reordenação também funciona com vários itens por linha. Os quadrados formam um grupo: só ficam na grade, e os cards de fora não entram nela.</p>
+
+				<!-- data-jt-group: os quadrados só ficam nesta grade, e cards de outros lugares não entram nela -->
+				<div class="tile-grid jt-dropzone" data-name="grid.name" data-jt-group="tiles">
+					<div class="tile jt-draggable" style="--hue: 210">1</div>
+					<div class="tile jt-draggable" style="--hue: 260">2</div>
+					<div class="tile jt-draggable" style="--hue: 330">3</div>
+					<div class="tile jt-draggable" style="--hue: 10">4</div>
+					<div class="tile jt-draggable" style="--hue: 35">5</div>
+					<div class="tile jt-draggable" style="--hue: 140">6</div>
+					<div class="tile jt-draggable" style="--hue: 175">7</div>
+					<div class="tile jt-draggable" style="--hue: 290">8</div>
+				</div>
+			</section>
+
+			<!-- Exemplo 4: dropzone dentro de dropzone -->
+			<section class="section">
+				<h2 data-i18n="nested.title">Dropzone dentro de dropzone</h2>
+				<p class="desc" data-i18n="nested.desc">O card cai sempre na dropzone mais interna que estiver embaixo do ponteiro.</p>
+
+				<div class="column nested-outer jt-dropzone" data-name="nested.outer">
+					<h3 class="column-title" data-i18n="nested.outer">Externa</h3>
+					<div class="card jt-draggable">
+						<div class="card-title" data-i18n="nest1.title">Estou na externa</div>
+						<div class="card-text" data-i18n="nest1.text">Me arraste para a área tracejada.</div>
+					</div>
+					<div class="nested-inner jt-dropzone" data-name="nested.inner">
+						<h3 class="column-title" data-i18n="nested.inner">Interna</h3>
+						<div class="card jt-draggable">
+							<div class="card-title" data-i18n="nest2.title">Estou na interna</div>
+							<div class="card-text" data-i18n="nest2.text">Me arraste para fora da área tracejada.</div>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<footer class="footer">
+				<span data-i18n="footer">Feito por Jean / Jeto · Licença MIT</span>
+			</footer>
+		</div>
+
+		<!-- A lib -->
+		<script src="../jet-dnd.js"></script>
+		<!-- Código só desta demo (idioma, painel de eventos, botão de adicionar card) -->
+		<script src="demo.js"></script>
+	</body>
+</html>
