@@ -1,11 +1,14 @@
 # MIT License
 
+> A versão em inglês, abaixo, é a oficial. A tradução em português é apenas para referência.
+> The English version below is the official one. The Portuguese translation is for reference only.
+
 <p align="center">
   <strong>Português:</strong>
   <strong>Licença MIT</strong>
 </p>
 
-Copyright (c) [2024] [Jean / Jeto]
+Copyright (c) 2024-2026 Jean / Jeto (JetoG)
 
 Por meio deste, é concedida permissão, gratuitamente, a qualquer pessoa que obtenha uma cópia deste software e arquivos de documentação associados (o "Software"), para lidar no Software sem restrição, incluindo, sem limitação, os direitos de usar, copiar, modificar, fundir, publicar, distribuir, sublicenciar e/ou vender cópias do Software, e permitir que as pessoas a quem o Software é fornecido o façam, sujeitas às seguintes condições:
 
@@ -20,7 +23,7 @@ O SOFTWARE É FORNECIDO "COMO ESTÁ", SEM GARANTIA DE QUALQUER TIPO, EXPRESSA OU
   <strong>MIT License</strong>
 </p>
 
-Copyright (c) [2024] [Jean / Jeto]
+Copyright (c) 2024-2026 Jean / Jeto (JetoG)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
