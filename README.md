@@ -6,8 +6,6 @@
 
 **[▶ Veja a demonstração ao vivo](https://jetog.github.io/Jet-DnD/)**
 
-<!-- GIF da demonstração: gravar e colocar aqui -->
-
 ## Índice
 
 - [Recursos](#recursos)

@@ -6,8 +6,6 @@
 
 **[▶ See the live demo](https://jetog.github.io/Jet-DnD/)**
 
-<!-- Demo GIF: record it and put it here -->
-
 ## Table of contents
 
 - [Features](#features)
