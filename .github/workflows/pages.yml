@@ -1,0 +1,54 @@
+# Publica a demo (pasta docs/ + a lib jet-dnd.js) no GitHub Pages.
+# Só roda depois que este arquivo estiver no GitHub E o Pages estiver configurado
+# em Settings → Pages → Source: "GitHub Actions".
+
+name: Publicar demo no GitHub Pages
+
+# Quando rodar: a cada push na main, ou manualmente pela aba "Actions" do GitHub
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissões mínimas: ler o repositório e publicar no Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Se dois pushes acontecerem seguidos, cancela a publicação antiga e fica só com a mais nova
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # 1. Baixa o código do repositório na máquina do GitHub
+      - uses: actions/checkout@v7
+
+      # 2. Monta a pasta _site com o que vai para o ar:
+      #    o conteúdo da docs/ + uma cópia da lib ao lado do index.html.
+      #    Como a lib fica na mesma pasta, troca o "../jet-dnd.js" por "jet-dnd.js" no index.html
+      - name: Montar o site
+        run: |
+          mkdir _site
+          cp -r docs/. _site/
+          cp jet-dnd.js _site/
+          sed -i 's#src="../jet-dnd.js"#src="jet-dnd.js"#' _site/index.html
+          # Confere se a troca aconteceu. Se o HTML mudar e o sed não achar o texto,
+          # a publicação FALHA aqui (em vez de publicar a demo sem a lib, sem ninguém perceber)
+          grep -q 'src="jet-dnd.js"' _site/index.html || { echo "Erro: o index.html não carrega o jet-dnd.js"; exit 1; }
+
+      # 3. Prepara, empacota e publica a pasta _site
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v5
