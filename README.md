@@ -50,7 +50,7 @@ Baixe o arquivo [`jet-dnd.js`](jet-dnd.js), coloque no seu projeto e inclua no f
 Ou use direto pelo CDN do jsDelivr, sem baixar nada:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/JetoG/Jet-DnD@1.0.0/jet-dnd.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/JetoG/Jet-DnD@1.1.0/jet-dnd.js"></script>
 ```
 
 ## Uso rápido
