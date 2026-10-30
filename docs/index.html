@@ -40,7 +40,7 @@
 				<p class="desc" data-i18n="kanban.desc">Arraste as tarefas entre as colunas ou mude a ordem dentro de uma coluna. A coluna "Feito" só aceita tarefas que vieram de "Fazendo". No celular, segure o card por um instante para pegá-lo.</p>
 
 				<div class="kanban">
-					<div class="column jt-dropzone" data-name="col.todo">
+					<div class="column jt-dropzone" data-name="col.todo" data-status="todo">
 						<h3 class="column-title"><span data-i18n="col.todo">A fazer</span> <span class="count"></span></h3>
 						<div class="card jt-draggable">
 							<div class="card-title" data-i18n="task1.title">Criar tela de login</div>
@@ -68,7 +68,7 @@
 						</div>
 					</div>
 
-					<div class="column jt-dropzone" data-name="col.doing">
+					<div class="column jt-dropzone" data-name="col.doing" data-status="doing">
 						<h3 class="column-title"><span data-i18n="col.doing">Fazendo</span> <span class="count"></span></h3>
 						<div class="card jt-draggable">
 							<div class="card-title" data-i18n="task7.title">Arrastar e soltar</div>
@@ -80,7 +80,7 @@
 						</div>
 					</div>
 
-					<div class="column jt-dropzone" data-name="col.done" data-jt-drop="marcarComoFeito">
+					<div class="column jt-dropzone" data-name="col.done" data-status="done" data-jt-drop="marcarComoFeito">
 						<h3 class="column-title"><span data-i18n="col.done">Feito</span> <span class="count"></span></h3>
 						<div class="card jt-draggable is-done">
 							<div class="card-title" data-i18n="task9.title">Publicar a demo</div>

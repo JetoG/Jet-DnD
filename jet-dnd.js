@@ -1,5 +1,5 @@
 /**
- - Jet DnD v1.0.0 — arraste e solte em JavaScript puro, sem dependências.
+ - Jet DnD v1.1.0 — arraste e solte em JavaScript puro, sem dependências.
  - Funciona com mouse, toque e caneta.
  - https://github.com/JetoG/Jet-DnD · Licença MIT · Feito por Jean / Jeto
  -
@@ -15,6 +15,10 @@
 // Assim a lib não briga com outros scripts que tenham, por exemplo, uma variável "isDragging"
 (function () {
     'use strict'; // Modo estrito: o navegador avisa erros que normalmente passariam calados
+
+    // Fora do navegador (ex.: renderização no servidor com Node) não existe window nem DOM:
+    // a lib não faz nada, em vez de quebrar o import com ReferenceError
+    if (typeof window === 'undefined') return;
 
     // Se a lib for incluída duas vezes na página, a segunda não faz nada
     // (sem isso, os listeners seriam registrados de novo e cada arrasto rodaria duas vezes)
@@ -51,6 +55,14 @@
         // Soma-se aos grupos (data-jt-group). A dropzone de origem sempre aceita o card de volta
         accepts: null,
 
+        // Funções que o data-jt-drop da dropzone pode chamar, pelo nome: { marcarComoFeito }.
+        // É uma lista do que é permitido: um atributo HTML só chama o que estiver aqui
+        actions: {},
+
+        // O data-jt-drop também procura funções globais (window)? true mantém o jeito da v1.0.
+        // Use false quando o HTML puder ter conteúdo vindo de usuários: aí só valem as "actions"
+        globalDropActions: true,
+
         // Funções chamadas nos momentos do arrasto (cada uma recebe um objeto "detail" com as informações)
         onDragStart: null, // Começou a arrastar:        { card, from, index }
         onDrop: null,      // Soltou e o card mudou de lugar: { card, from, to, oldIndex, newIndex }
@@ -74,16 +86,84 @@
     // Estilo "visualmente escondido": invisível na tela, mas lido pelos leitores de tela
     const VISUALLY_HIDDEN = 'position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;';
 
+    // Opções que são seletores CSS e opções numéricas (validadas no init)
+    const SELECTOR_OPTIONS = ['draggable', 'dropzone', 'handle'];
+    const NUMBER_OPTIONS = ['dragThreshold', 'longPressDelay', 'scrollEdge', 'scrollSpeed'];
+
+    // Propriedades que a lib coloca inline no card durante o arrasto
+    // (guardadas antes e devolvidas depois, para não apagar o que já estava lá)
+    const DRAG_STYLE_PROPS = ['position', 'top', 'left', 'width', 'height', 'box-sizing',
+        'translate', 'z-index', 'pointer-events'];
+
+    // Elementos que o clone não deve copiar: um iframe recarregaria a página dele,
+    // e um vídeo ou áudio com autoplay tocaria em dobro. No clone, viram um espaço do mesmo tamanho
+    const HEAVY_MEDIA = 'iframe, video, audio, embed, object';
+
+    // Funções globais que um data-jt-drop nunca pode chamar, mesmo com globalDropActions: true
+    const BLOCKED_GLOBALS = new Set([
+        'eval', 'Function', 'alert', 'confirm', 'prompt', 'open', 'close', 'print', 'stop',
+        'fetch', 'postMessage', 'setTimeout', 'setInterval', 'queueMicrotask',
+        'requestAnimationFrame', 'importScripts', 'XMLHttpRequest', 'WebSocket', 'Worker',
+    ]);
+
+    /**
+     - Valida as opções ANTES de a lib tocar na página.
+     - Sem isso, um seletor inválido só dava erro no meio do init, com os listeners já
+     - registrados: o init falhava sem devolver a instância (sem destroy para chamar)
+     - e os listeners ficavam na página para sempre. Validando antes, o init é "tudo ou nada"
+     - @param {Object} options - Opções já juntadas com DEFAULTS (os números inválidos são corrigidos aqui)
+     - @throws {TypeError|SyntaxError} Se um seletor for inválido
+     */
+    function validateOptions(options) {
+        for (let name of SELECTOR_OPTIONS) {
+            let selector = options[name];
+            if (typeof selector !== 'string' || !selector.trim()) {
+                throw new TypeError(`[JetDnD] a opção "${name}" precisa ser um seletor CSS (texto).`);
+            }
+            // Os seletores vão para dentro de um <style>: chaves fechariam a regra
+            // e deixariam injetar CSS. Um seletor válido nunca precisa delas
+            if (/[{}]/.test(selector)) {
+                throw new SyntaxError(`[JetDnD] a opção "${name}" não pode ter "{" ou "}".`);
+            }
+            // Um fragmento vazio é o jeito mais barato de o próprio navegador validar o seletor
+            try {
+                document.createDocumentFragment().querySelector(selector);
+            } catch {
+                throw new SyntaxError(`[JetDnD] seletor inválido na opção "${name}": ${selector}`);
+            }
+        }
+
+        // Números inválidos não derrubam a página: voltam ao padrão, com um aviso
+        for (let name of NUMBER_OPTIONS) {
+            if (!Number.isFinite(options[name]) || options[name] < 0) {
+                console.warn(`[JetDnD] opção "${name}" inválida (${options[name]}); usando ${DEFAULTS[name]}.`);
+                options[name] = DEFAULTS[name];
+            }
+        }
+        // Faixa de borda zero: não há onde o auto-scroll agir (e a conta da velocidade dividiria por zero)
+        if (options.scrollEdge === 0) options.autoScroll = false;
+
+        if (options.actions == null || typeof options.actions !== 'object') options.actions = {};
+    }
+
     /**
      - Liga o arrastar e soltar na página.
      - @param {Object} userOptions - Opções (as que não forem informadas usam o padrão de DEFAULTS)
-     - @returns {{ destroy: Function, options: Object }} A instância criada
+     - @returns {{ destroy: Function, options: Object, setMessages: Function }} A instância criada
+     - @throws {TypeError|SyntaxError} Se um seletor das opções for inválido (nada é ligado nesse caso)
      */
     function init(userOptions = {}) {
+        userOptions ??= {}; // init(null) também usa o padrão
+
         // Junta o padrão com o que a pessoa passou (o que ela passou ganha).
         // As mensagens são juntadas à parte, para dar para trocar só algumas delas
         const options = { ...DEFAULTS, ...userOptions };
         options.messages = { ...DEFAULTS.messages, ...userOptions.messages };
+        validateOptions(options); // Antes de qualquer addEventListener
+
+        // Opções congeladas: trocar dnd.options.draggable depois do init deixaria o CSS injetado
+        // e o registro de instâncias inconsistentes. (As mensagens mudam pelo setMessages)
+        Object.freeze(options);
 
         const key = options.draggable + '|' + options.dropzone;
         if (instances.has(key)) {
@@ -106,7 +186,15 @@
         let currentDropzone = null; // Dropzone embaixo do ponteiro durante o arrasto (a que está destacada)
         let currentRefused = null; // Dropzone embaixo do ponteiro que recusou o card (a que está marcada como recusada)
         let previousUserSelect = ''; // user-select que o body tinha antes do arrasto (para devolver no fim)
+        let previousWebkitUserSelect = ''; // O mesmo, para o -webkit-user-select (Safari)
+        let savedInlineStyles = null; // Estilos inline que o card tinha antes do arrasto: [propriedade, valor, prioridade]
+        let dropTargetFrame = null; // Quadro agendado para recalcular a dropzone e o clone (requestAnimationFrame)
+        let overflowCache = new WeakMap(); // overflow de cada elemento, lido uma vez por arrasto (para o auto-scroll)
         let destroyed = false; // true depois do destroy (a instância está desligada)
+
+        // Id desta instância: usado no id das instruções e no marcador data-jt-tabindex,
+        // para o destroy desfazer só o que esta instância fez
+        const uid = String(++instanceCount);
 
         // Estado do arrasto pelo teclado
         let keyboardDragging = false; // true = um card foi pego com o Espaço
@@ -145,7 +233,7 @@
         // Texto de instruções (escondido na tela). Os cards focáveis apontam para ele com aria-describedby,
         // então o leitor de tela lê as instruções quando o card recebe o foco
         const instructions = document.createElement('div');
-        instructions.id = 'jt-instructions-' + (++instanceCount);
+        instructions.id = 'jt-instructions-' + uid;
         instructions.style.cssText = VISUALLY_HIDDEN;
         instructions.textContent = options.messages.instructions;
 
@@ -198,16 +286,17 @@
             instructions.remove();
             liveRegion.remove();
 
-            // Desfaz o que a lib colocou nos elementos para deixá-los focáveis (e só o que ela colocou)
-            document.querySelectorAll('[data-jt-tabindex]').forEach(el => {
+            // Desfaz o que ESTA instância colocou nos elementos para deixá-los focáveis.
+            // O marcador guarda o id da instância: o destroy de uma não mexe no que é de outra
+            document.querySelectorAll(`[data-jt-tabindex="${uid}"]`).forEach(el => {
                 el.removeAttribute('tabindex');
                 el.removeAttribute('data-jt-tabindex');
             });
-            document.querySelectorAll('[data-jt-describedby]').forEach(el => {
-                let ids = (el.getAttribute('aria-describedby') ?? '').split(' ').filter(id => id && id !== instructions.id);
+            // O id das instruções é só desta instância: basta tirá-lo de quem aponta para ele
+            document.querySelectorAll(`[aria-describedby~="${CSS.escape(instructions.id)}"]`).forEach(el => {
+                let ids = el.getAttribute('aria-describedby').split(' ').filter(id => id && id !== instructions.id);
                 if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
                 else el.removeAttribute('aria-describedby');
-                el.removeAttribute('data-jt-describedby');
             });
 
             // Só tira do registro se a entrada ainda for desta instância.
@@ -265,10 +354,11 @@
             pressX = e.clientX;
             pressY = e.clientY;
 
-            // Adiciona eventos para mover e finalizar o arrasto
-            document.addEventListener('pointermove', jtDragMove);
-            document.addEventListener('pointerup', jtDragEnd);
-            document.addEventListener('pointercancel', jtDragEnd); // O navegador pode cancelar o toque (ex.: uma notificação, um gesto do sistema)
+            // Adiciona eventos para mover e finalizar o arrasto.
+            // Passam por um filtro: só o ponteiro que pegou o card manda no arrasto
+            document.addEventListener('pointermove', onOwnPointerMove);
+            document.addEventListener('pointerup', onOwnPointerEnd);
+            document.addEventListener('pointercancel', onOwnPointerEnd); // O navegador pode cancelar o toque (ex.: uma notificação, um gesto do sistema)
 
             // No toque, em card sem alça: o arrasto só começa depois de segurar o dedo parado.
             // Um toque rápido deslizando o dedo continua rolando a página normalmente
@@ -286,6 +376,25 @@
                 // Segurar o dedo também abre o menu de contexto no celular
                 document.addEventListener('contextmenu', preventContextMenu);
             }
+        }
+
+        /**
+         - Repassa o pointermove para o jtDragMove só se vier do ponteiro que pegou o card.
+         - Os listeners estão no document e recebem eventos de TODOS os ponteiros: sem este filtro,
+         - um segundo dedo (ou mouse e caneta juntos) movia o card
+         - @param {PointerEvent} e - Evento de ponteiro
+         */
+        function onOwnPointerMove(e) {
+            if (e.pointerId === pointerId) jtDragMove(e);
+        }
+
+        /**
+         - O mesmo filtro para pointerup/pointercancel: tirar o segundo dedo da tela não solta o card.
+         - (O destroy e o Esc chamam o jtDragEnd direto, com um evento { type: 'pointercancel' } sem pointerId)
+         - @param {PointerEvent} e - Evento de ponteiro
+         */
+        function onOwnPointerEnd(e) {
+            if (e.pointerId === pointerId) jtDragEnd(e);
         }
 
         /**
@@ -336,6 +445,7 @@
             // Guarda o valor que o body tinha, para devolver no fim
             window.getSelection()?.removeAllRanges();
             previousUserSelect = document.body.style.userSelect;
+            previousWebkitUserSelect = document.body.style.webkitUserSelect;
             document.body.style.userSelect = 'none';
             document.body.style.webkitUserSelect = 'none'; // Safari
 
@@ -359,16 +469,37 @@
             // Cria um clone do card
             createCloneCard(currentCard);
 
+            // Guarda os estilos inline que o card já tinha, para devolver no fim do arrasto
+            saveInlineStyles(currentCard);
+
             // Define a posição fixa e tamanho do card para permitir arrasto.
             // fixed = posicionado sempre em relação à janela, não importa o position dos pais
             // (com absolute, um pai com position: relative mudava a referência e o card pulava)
             currentCard.style.position = 'fixed';
             currentCard.style.top = initialCardY + 'px'; // top/left são definidos uma vez só, aqui.
             currentCard.style.left = initialCardX + 'px'; // Durante o movimento, quem anda é o translate
+            // offsetWidth/offsetHeight incluem padding e borda: só batem com width/height em border-box.
+            // Sem isto, um card com box-sizing: content-box "inchava" ao ser pego
+            currentCard.style.boxSizing = 'border-box';
             currentCard.style.width = cardWidth + 'px';
             currentCard.style.height = cardHeight + 'px';
             currentCard.style.zIndex = '1000'; // O card arrastado passa por cima dos outros elementos
             currentCard.style.pointerEvents = 'none'; // O ponteiro "atravessa" o card, para o elementFromPoint enxergar o que está embaixo dele
+
+            // Um pai com transform, filter, perspective, contain ou will-change muda a referência do fixed
+            // (ele passa a ser relativo a esse pai), e o card pulava. Mede onde o card foi parar e
+            // compensa a diferença. Também corrige cards com margin: auto (que vira 0 no fixed).
+            // Limitação: compensa deslocamento, não escala (um pai com transform: scale ainda distorce)
+            let placed = currentCard.getBoundingClientRect();
+            let offsetX = rect.left - placed.left;
+            let offsetY = rect.top - placed.top;
+            if (Math.abs(offsetX) > 0.5 || Math.abs(offsetY) > 0.5) { // Ignora diferenças de arredondamento
+                currentCard.style.left = (initialCardX + offsetX) + 'px';
+                currentCard.style.top = (initialCardY + offsetY) + 'px';
+            }
+
+            // O overflow das áreas é lido uma vez por arrasto (o auto-scroll consulta a cada quadro)
+            overflowCache = new WeakMap();
 
             // Liga as classes de arrasto, para quem usa a lib estilizar como quiser no CSS
             // (ex.: na demo, card "levantado" e cursor de "agarrando" na página toda)
@@ -432,7 +563,23 @@
 
             lastX = e.clientX;
             lastY = e.clientY;
-            updateDropTarget(lastX, lastY);
+            scheduleDropTargetUpdate();
+        }
+
+        /**
+         - Agenda o recálculo da dropzone e do clone para o próximo quadro da tela.
+         - O pointermove pode disparar centenas de vezes por segundo (mouses de 1000 Hz), e cada
+         - recálculo lê o layout de todos os cards logo depois de o clone mudar de lugar (reflow forçado).
+         - A tela só desenha ~60 vezes por segundo: recalcular mais do que isso é trabalho jogado fora.
+         - O translate do card continua sendo aplicado na hora (é barato e mantém o card colado ao ponteiro).
+         - O drop não depende disto: o jtDragEnd recalcula tudo na hora, com a posição do pointerup
+         */
+        function scheduleDropTargetUpdate() {
+            if (dropTargetFrame) return; // Já tem um agendado: ele usa o lastX/lastY mais recentes
+            dropTargetFrame = requestAnimationFrame(() => {
+                dropTargetFrame = null;
+                if (isDragging) updateDropTarget(lastX, lastY);
+            });
         }
 
         /**
@@ -452,7 +599,7 @@
          - Chamada quando qualquer área da página rola durante o arrasto
          */
         function onScrollDuringDrag() {
-            if (isDragging) updateDropTarget(lastX, lastY);
+            if (isDragging) scheduleDropTargetUpdate();
         }
 
         /**
@@ -502,15 +649,23 @@
         }
 
         /**
-         - Descobre se o elemento tem rolagem própria (overflow auto/scroll e conteúdo maior que ele)
+         - Descobre se o elemento tem rolagem própria (overflow auto/scroll e conteúdo maior que ele).
+         - O overflow vem do cache (o CSS não muda no meio do arrasto, e o getComputedStyle a cada quadro,
+         - em cada pai, custa caro). O tamanho do conteúdo é medido sempre, porque muda com o clone
          - @param {Element} el - Elemento
          - @returns {boolean}
          */
         function isScrollable(el) {
-            let style = getComputedStyle(el);
-            let scrollY = /(auto|scroll|overlay)/.test(style.overflowY) && el.scrollHeight > el.clientHeight;
-            let scrollX = /(auto|scroll|overlay)/.test(style.overflowX) && el.scrollWidth > el.clientWidth;
-            return scrollY || scrollX;
+            let overflow = overflowCache.get(el);
+            if (!overflow) {
+                let style = getComputedStyle(el);
+                overflow = {
+                    y: /(auto|scroll|overlay)/.test(style.overflowY),
+                    x: /(auto|scroll|overlay)/.test(style.overflowX),
+                };
+                overflowCache.set(el, overflow);
+            }
+            return (overflow.y && el.scrollHeight > el.clientHeight) || (overflow.x && el.scrollWidth > el.clientWidth);
         }
 
         /**
@@ -545,11 +700,15 @@
          - Os pontos de referência são os filhos diretos da dropzone que são cards ou que são
          - (ou têm dentro) outra dropzone. Títulos e outros textos são ignorados, para o card
          - nunca cair acima do título da coluna.
-         - Percorre esses elementos na ordem e devolve o primeiro que está "depois" do ponteiro:
-         - - na mesma linha do ponteiro: se o ponteiro está antes do meio do elemento
-         -   (à esquerda; ou à direita em dropzones da direita para a esquerda, direction: rtl)
-         - - em outra linha: se o ponteiro está acima do meio do elemento
-         - Funciona tanto para lista (um card por linha) quanto para grade (vários por linha)
+         - Percorre esses elementos na ordem e devolve o primeiro que está "depois" do ponteiro.
+         - A regra depende do formato da dropzone:
+         - - Lista (um card por linha): o ponteiro está acima do meio do elemento.
+         -   Só a altura importa, então a troca acontece ao passar do meio do card vizinho,
+         -   não importa se o ponteiro está no lado esquerdo ou direito dele
+         - - Grade ou linha (vários por linha):
+         -   - na mesma linha do ponteiro: o ponteiro está antes do meio do elemento
+         -     (à esquerda; ou à direita em dropzones da direita para a esquerda, direction: rtl)
+         -   - em outra linha: o ponteiro está acima do meio do elemento
          - @param {HTMLElement} dropzone - Dropzone embaixo do ponteiro
          - @param {number} x - Posição X do ponteiro na janela (clientX)
          - @param {number} y - Posição Y do ponteiro na janela (clientY)
@@ -562,17 +721,48 @@
                 el !== cardClone && el !== currentCard &&
                 (el.matches(options.draggable) || el.matches(options.dropzone) || el.querySelector(options.dropzone))
             );
+            let rects = references.map(el => el.getBoundingClientRect());
 
+            // Lista: só a altura decide
+            if (!isMultiColumn(dropzone, rects)) {
+                let index = rects.findIndex(rect => y < rect.top + rect.height / 2);
+                return index === -1 ? null : references[index];
+            }
+
+            // Grade ou linha
             let isRtl = getComputedStyle(dropzone).direction === 'rtl';
-
-            return references.find(el => {
-                let rect = el.getBoundingClientRect();
+            let index = rects.findIndex(rect => {
                 let middleX = rect.left + rect.width / 2;
                 let sameRow = y >= rect.top && y <= rect.bottom;
 
                 if (!sameRow) return y < rect.top + rect.height / 2;
                 return isRtl ? x > middleX : x < middleX;
-            }) ?? null;
+            });
+            return index === -1 ? null : references[index];
+        }
+
+        /**
+         - Descobre se a dropzone coloca vários itens por linha (grade, linha horizontal)
+         - ou um embaixo do outro (lista).
+         - 1. Pela posição dos itens: se algum começa antes de o anterior terminar (em altura),
+         -    os dois estão lado a lado. Pega qualquer layout, até inline-block e float.
+         - 2. Com menos de dois itens não dá para comparar posições: aí decide pelo CSS da dropzone
+         -    (flex em linha, ou grid com mais de uma coluna). Sem isso, uma grade com um item só
+         -    seria tratada como lista
+         - @param {HTMLElement} dropzone - Dropzone
+         - @param {DOMRect[]} rects - Posições dos itens de referência, na ordem do HTML
+         - @returns {boolean} true = vários por linha; false = lista
+         */
+        function isMultiColumn(dropzone, rects) {
+            for (let i = 1; i < rects.length; i++) {
+                if (rects[i].top < rects[i - 1].bottom - 1) return true; // -1: tolera arredondamento de pixel
+            }
+            if (rects.length > 1) return false;
+
+            let style = getComputedStyle(dropzone);
+            if (style.display.includes('flex')) return style.flexDirection.startsWith('row');
+            if (style.display.includes('grid')) return style.gridTemplateColumns.trim().split(/\s+/).length > 1;
+            return false;
         }
 
         /**
@@ -664,9 +854,9 @@
          - @param {PointerEvent} e - Evento de ponteiro
          */
         function jtDragEnd(e) {
-            document.removeEventListener('pointermove', jtDragMove);
-            document.removeEventListener('pointerup', jtDragEnd);
-            document.removeEventListener('pointercancel', jtDragEnd);
+            document.removeEventListener('pointermove', onOwnPointerMove);
+            document.removeEventListener('pointerup', onOwnPointerEnd);
+            document.removeEventListener('pointercancel', onOwnPointerEnd);
             document.removeEventListener('touchmove', preventTouchScroll);
             document.removeEventListener('contextmenu', preventContextMenu);
 
@@ -701,9 +891,11 @@
                     updateDropzoneHighlight(null);
                     updateRefusedHighlight(null);
 
-                    // Para o auto-scroll e para de acompanhar a rolagem
+                    // Para o auto-scroll, o recálculo agendado e o acompanhamento da rolagem
                     cancelAnimationFrame(autoScrollFrame);
                     autoScrollFrame = null;
+                    cancelAnimationFrame(dropTargetFrame);
+                    dropTargetFrame = null;
                     document.removeEventListener('scroll', onScrollDuringDrag, { capture: true });
 
                     resetDragStyles(card);
@@ -750,7 +942,7 @@
             // 1. a função do data-jt-drop da dropzone de destino; 2. o onDrop do init; 3. o evento jt-drop.
             // (Soltou fora, cancelou ou soltou no mesmo lugar: nada mudou, então o drop não é avisado)
             if (changed) {
-                callDropzoneFunction(newDropzone, detail);
+                callDropzoneFunction(newDropzone, detail, options);
                 emit('jt-drop', card, detail, options.onDrop);
             }
 
@@ -759,25 +951,42 @@
         }
 
         /**
-         - Remove os estilos inline e as classes colocados durante o arrasto,
-         - para o card (e o body) voltarem a usar o CSS normal
+         - Desfaz os estilos inline e as classes colocados durante o arrasto,
+         - para o card (e o body) voltarem a ser como eram antes
          - @param {HTMLElement} card - Elemento do card
          */
         function resetDragStyles(card) {
-            card.style.removeProperty('position');
-            card.style.removeProperty('width');
-            card.style.removeProperty('height');
-            card.style.removeProperty('top');
-            card.style.removeProperty('left');
-            card.style.removeProperty('translate');
-            card.style.removeProperty('z-index');
-            card.style.removeProperty('pointer-events');
+            restoreInlineStyles(card);
             card.classList.remove('jt-dragging');
 
             // Devolve o user-select que o body tinha antes do arrasto
             document.body.style.userSelect = previousUserSelect;
-            document.body.style.webkitUserSelect = previousUserSelect;
+            document.body.style.webkitUserSelect = previousWebkitUserSelect;
             document.body.classList.remove('jt-dragging-active');
+        }
+
+        /**
+         - Guarda os valores inline (e a prioridade !important) que o card tinha nas propriedades
+         - que a lib vai usar. Antes, o fim do arrasto removia essas propriedades, apagando
+         - estilos que a pessoa tinha colocado no card (ex.: style="z-index: 5")
+         - @param {HTMLElement} card - Elemento do card
+         */
+        function saveInlineStyles(card) {
+            savedInlineStyles = DRAG_STYLE_PROPS.map(prop =>
+                [prop, card.style.getPropertyValue(prop), card.style.getPropertyPriority(prop)]
+            );
+        }
+
+        /**
+         - Devolve exatamente o que o card tinha em cada propriedade (ou remove, se não tinha nada)
+         - @param {HTMLElement} card - Elemento do card
+         */
+        function restoreInlineStyles(card) {
+            for (let [prop, value, priority] of savedInlineStyles ?? []) {
+                if (value) card.style.setProperty(prop, value, priority);
+                else card.style.removeProperty(prop);
+            }
+            savedInlineStyles = null;
         }
 
         /**
@@ -804,7 +1013,7 @@
          - Deixa focáveis pelo Tab os cards (ou as alças, se o card tiver) dentro de um elemento,
          - e liga as instruções para leitores de tela (aria-describedby).
          - Elementos que já são focáveis (link, botão...) ou que já têm tabindex não são alterados.
-         - Os atributos data-jt-* marcam o que a lib colocou, para o destroy desfazer só isso
+         - O data-jt-tabindex marca (com o id da instância) o tabindex que a lib colocou, para o destroy desfazer só isso
          - @param {Element|Document} root - Onde procurar (a página inteira, ou um elemento recém-adicionado)
          */
         function prepareFocusTargets(root) {
@@ -813,20 +1022,30 @@
             let cards = [...root.querySelectorAll(options.draggable)];
             if (root.matches?.(options.draggable)) cards.unshift(root);
 
+            // O elemento adicionado pode ser uma ALÇA dentro de um card que já existia:
+            // aí o card dono precisa ser revisto (o foco passa do card para a alça)
+            let owner = root.parentElement?.closest(options.draggable);
+            if (owner) cards.push(owner);
+
             cards.forEach(card => {
-                if (card.classList.contains('jt-clone')) return; // O clone é só visual
+                if (card.closest('.jt-clone')) return; // O clone (e tudo dentro dele) é só visual
+
+                // O card ganhou alça: o tabindex que esta instância colocou nele não faz mais sentido
+                if (card.getAttribute('data-jt-tabindex') === uid && hasHandle(card)) {
+                    card.removeAttribute('tabindex');
+                    card.removeAttribute('data-jt-tabindex');
+                }
 
                 getFocusTargets(card).forEach(target => {
-                    let nativelyFocusable = target.matches('a[href], button, input, select, textarea, [contenteditable]');
+                    let nativelyFocusable = target.matches('a[href], button, input, select, textarea, [contenteditable]:not([contenteditable="false"])');
                     if (!nativelyFocusable && !target.hasAttribute('tabindex')) {
                         target.setAttribute('tabindex', '0');
-                        target.setAttribute('data-jt-tabindex', '');
+                        target.setAttribute('data-jt-tabindex', uid);
                     }
 
                     let ids = (target.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean);
                     if (!ids.includes(instructions.id)) {
                         target.setAttribute('aria-describedby', [...ids, instructions.id].join(' '));
-                        target.setAttribute('data-jt-describedby', '');
                     }
                 });
             });
@@ -851,16 +1070,38 @@
          - @param {KeyboardEvent} e - Evento de teclado
          */
         function jtKeyDown(e) {
+            // Tecla já tratada (por outra instância da lib ou pela página): não trata de novo.
+            // Sem isso, com duas instâncias vendo o mesmo card, o Espaço que SOLTAVA o card
+            // numa instância era usado para PEGAR o card de novo na outra.
+            // Teclas durante a composição de um IME (japonês, chinês...) também não são comandos
+            if (e.defaultPrevented || e.isComposing) return;
+
             // Esc durante um arrasto com o ponteiro: cancela (o card volta para onde estava)
             if (e.key === 'Escape' && isDragging) {
                 e.preventDefault();
+                let id = pointerId; // O jtDragEnd zera o pointerId: guarda antes
                 jtDragEnd({ type: 'pointercancel' });
+                blockClickOnRelease(id);
                 return;
             }
 
             if (!options.keyboard) return;
 
             if (keyboardDragging) {
+                // O card saiu da página no meio do arrasto (ex.: a página redesenhou a lista).
+                // Antes, a próxima tecla dava TypeError e a lib ficava travada achando que ainda arrastava
+                if (!currentCard.isConnected) {
+                    abortKeyboardDrag();
+                    return;
+                }
+
+                // As setas podem repetir (segurar ↓ desce vários cards), mas o Espaço/Enter não:
+                // segurar o Espaço soltava e pegava o card várias vezes seguidas
+                if ((e.key === ' ' || e.key === 'Enter') && e.repeat) {
+                    e.preventDefault();
+                    return;
+                }
+
                 // preventDefault: as setas e o Espaço não rolam a página enquanto o card está pego
                 if (e.key === 'ArrowUp') { e.preventDefault(); keyboardMove('up'); }
                 else if (e.key === 'ArrowDown') { e.preventDefault(); keyboardMove('down'); }
@@ -871,14 +1112,35 @@
                 return;
             }
 
-            // Só o Espaço pega o card. (O Enter fica livre: num card que é link, ele abre o link)
-            if (e.key !== ' ' || activeCard) return;
+            // Só o Espaço pega o card. (O Enter fica livre: num card que é link, ele abre o link).
+            // Sem repetição (Espaço segurado) e sem Ctrl/Alt/Meta (costumam ser atalhos do sistema ou da página)
+            if (e.key !== ' ' || e.repeat || e.ctrlKey || e.altKey || e.metaKey || activeCard) return;
 
             let card = e.target.closest?.(options.draggable);
             if (!card || !getFocusTargets(card).includes(e.target)) return; // O foco precisa estar no card (ou na alça)
 
             e.preventDefault(); // Não rola a página (nem "clica" se a alça for um botão)
             keyboardPickUp(card, e.target);
+        }
+
+        /**
+         - Depois de cancelar com Esc um arrasto com o ponteiro, o botão (ou dedo) continua pressionado.
+         - Quando ele for solto, o navegador dispara um click no card, que abriria um card que é link.
+         - Bloqueia esse click: espera o pointerup DESSE ponteiro e só então liga o preventClick.
+         - Se o navegador cancelar o ponteiro (pointercancel), não vem click, e a espera é desfeita
+         - @param {number} id - pointerId do ponteiro que estava arrastando
+         */
+        function blockClickOnRelease(id) {
+            let onRelease = (ev) => {
+                if (ev.pointerId !== id) return;
+                document.removeEventListener('pointerup', onRelease, true);
+                document.removeEventListener('pointercancel', onRelease, true);
+                if (ev.type !== 'pointerup') return;
+                window.addEventListener('click', preventClick, { capture: true, once: true });
+                setTimeout(() => window.removeEventListener('click', preventClick, { capture: true }), 0);
+            };
+            document.addEventListener('pointerup', onRelease, true);
+            document.addEventListener('pointercancel', onRelease, true);
         }
 
         /**
@@ -976,15 +1238,41 @@
         function keyboardCancel(restoreFocus = true) {
             let card = currentCard;
 
+            // O card saiu da página (a página o removeu): não traz de volta, só encerra
+            if (!card.isConnected) {
+                abortKeyboardDrag();
+                return;
+            }
+
             movingByKeyboard = true;
             try {
-                originalDropzone.insertBefore(card, originalNextSibling);
+                if (originalDropzone.isConnected) {
+                    // Volta para a posição original usando o originalIndex, e não o nó que vinha depois do card:
+                    // se esse nó tivesse sido removido da página, o insertBefore dava NotFoundError.
+                    // Sem o card arrastado na conta, o card na posição original é quem fica logo depois dele
+                    let others = getCards(originalDropzone).filter(el => el !== card);
+                    let reference = others[originalIndex] ?? null;
+                    if (reference) reference.before(card);
+                    else if (others.length) others[others.length - 1].after(card);
+                    else originalDropzone.insertBefore(card, originalNextSibling?.parentNode === originalDropzone ? originalNextSibling : null);
+                }
             } finally {
                 movingByKeyboard = false;
             }
-            if (restoreFocus) keyboardTarget.focus({ preventScroll: true });
+            if (restoreFocus) keyboardTarget?.focus({ preventScroll: true });
 
             announce(options.messages.canceled);
+            finishKeyboardDrag();
+            notifyDragEnd(card, false);
+        }
+
+        /**
+         - Encerra o arrasto pelo teclado quando o card já não está na página.
+         - Não tenta devolver o card (quem o removeu foi a página, e reinseri-lo brigaria com ela):
+         - só volta ao estado parado e avisa o fim (changed: false, com from/oldIndex da origem)
+         */
+        function abortKeyboardDrag() {
+            let card = currentCard;
             finishKeyboardDrag();
             notifyDragEnd(card, false);
         }
@@ -1018,7 +1306,9 @@
          - @param {string} message - Mensagem (ex.: options.messages.moved)
          */
         function announce(message) {
-            let cards = getCards(currentCard.parentElement);
+            let parent = currentCard?.parentElement;
+            if (!parent) return; // O card saiu da página: não há posição para anunciar
+            let cards = getCards(parent);
             liveRegion.textContent = message
                 .replace('{position}', cards.indexOf(currentCard) + 1)
                 .replace('{total}', cards.length);
@@ -1059,6 +1349,25 @@
             cardClone.inert = true;
             cardClone.setAttribute('aria-hidden', 'true');
 
+            // iframe, vídeo e áudio: no clone, viram um espaço vazio do mesmo tamanho
+            // (copiados, um iframe recarregaria a página dele e um vídeo com autoplay tocaria em dobro).
+            // Feito ANTES de o clone entrar na página: fora dela, nada carrega nem toca
+            let originalMedia = card.querySelectorAll(HEAVY_MEDIA);
+            cardClone.querySelectorAll(HEAVY_MEDIA).forEach((media, i) => {
+                let placeholder = document.createElement('div');
+                placeholder.className = 'jt-clone-placeholder';
+                placeholder.style.cssText = `display: inline-block; vertical-align: top; width: ${originalMedia[i].offsetWidth}px; height: ${originalMedia[i].offsetHeight}px;`;
+                media.replaceWith(placeholder);
+            });
+
+            // O cloneNode não copia o desenho de um <canvas>: copia à mão, para o clone não ficar em branco
+            let originalCanvases = card.querySelectorAll('canvas');
+            cardClone.querySelectorAll('canvas').forEach((canvas, i) => {
+                try {
+                    canvas.getContext('2d')?.drawImage(originalCanvases[i], 0, 0);
+                } catch {} // Canvas com contexto WebGL (ou já usado de outro jeito): o clone fica em branco, sem problema
+            });
+
             card.before(cardClone); // Adiciona o clone ao DOM, logo antes do card (no lugar de onde ele sai)
         }
 
@@ -1090,6 +1399,9 @@
      - 2. disparando o evento (ex.: jt-drop) no card, para quem usa addEventListener.
      - bubbles: true = o evento "sobe" pelos pais do card até o document,
      - então dá para escutar no document, numa coluna, num quadro inteiro...
+     - Se o card já saiu da página (ex.: uma "lixeira" o removeu no data-jt-drop), disparar nele
+     - não adianta: num elemento solto, o evento não sobe até o document. Aí o evento é disparado
+     - na dropzone de destino (ou no document). O detail.card continua apontando para o card
      - @param {string} eventName - Nome do evento (ex.: 'jt-drop')
      - @param {HTMLElement} card - Card onde o evento é disparado
      - @param {Object} detail - Informações enviadas (as mesmas para a função e para o evento)
@@ -1097,27 +1409,57 @@
      */
     function emit(eventName, card, detail, callback) {
         safeCall(callback, detail, eventName);
-        card.dispatchEvent(new CustomEvent(eventName, { bubbles: true, detail }));
+
+        let target = card.isConnected ? card
+            : detail.to?.isConnected ? detail.to
+            : document;
+        target.dispatchEvent(new CustomEvent(eventName, { bubbles: true, detail }));
     }
 
     /**
      - Chama a função do atributo data-jt-drop da dropzone, se tiver.
      - Ex.: <div class="jt-dropzone" data-jt-drop="marcarComoFeito"> chama marcarComoFeito(detail).
-     - A função precisa ser global (declarada com "function nome() {}" ou "window.nome = ..."),
-     - igual às funções usadas no onclick="" do HTML. Só busca pelo nome: nunca executa texto como código
+     - A função vem da opção actions do init ({ marcarComoFeito }) ou, com globalDropActions: true
+     - (o padrão), de uma função global, igual às usadas no onclick="" do HTML.
+     - Só busca pelo nome: nunca executa texto como código
      - @param {HTMLElement} dropzone - Dropzone de destino
      - @param {Object} detail - Informações do drop
+     - @param {Object} options - Opções da instância
      */
-    function callDropzoneFunction(dropzone, detail) {
+    function callDropzoneFunction(dropzone, detail, options) {
         let name = dropzone.dataset.jtDrop; // data-jt-drop="..." vira dataset.jtDrop
         if (!name) return;
 
-        let fn = window[name];
-        if (typeof fn !== 'function') {
-            console.warn(`[JetDnD] data-jt-drop="${name}": não existe uma função global com esse nome.`);
+        let fn = resolveDropAction(name, options);
+        if (!fn) {
+            console.warn(`[JetDnD] data-jt-drop="${name}": nenhuma função com esse nome nas actions do init` +
+                (options.globalDropActions ? ' nem entre as funções globais permitidas.' : '.'));
             return;
         }
         safeCall(fn, detail, `data-jt-drop="${name}"`);
+    }
+
+    /**
+     - Descobre qual função um nome de data-jt-drop chama.
+     - Buscar direto em window[name] deixava um atributo HTML chamar QUALQUER função global.
+     - Se um dia o HTML tiver conteúdo vindo de usuários, isso vira uma porta para acionar
+     - funções da página que não deveriam ser chamadas por um drop. Por isso, nesta ordem:
+     - 1. as actions do init (lista do que é permitido);
+     - 2. com globalDropActions: true, uma função global que seja da página (própria do window)
+     -    e que não esteja em BLOCKED_GLOBALS
+     - @param {string} name - Nome escrito no data-jt-drop
+     - @param {Object} options - Opções da instância
+     - @returns {Function|null} A função, ou null se o nome não é permitido
+     */
+    function resolveDropAction(name, options) {
+        if (Object.hasOwn(options.actions, name) && typeof options.actions[name] === 'function') {
+            return options.actions[name];
+        }
+        if (options.globalDropActions && !BLOCKED_GLOBALS.has(name) && Object.hasOwn(window, name)) {
+            let fn = window[name];
+            if (typeof fn === 'function') return fn;
+        }
+        return null;
     }
 
     /**
@@ -1137,5 +1479,8 @@
     }
 
     // A única coisa que a lib expõe para a página
-    window.JetDnD = { init, version: '1.0.0' };
+    window.JetDnD = { init, version: '1.1.0' };
+
+    // Com um bundler (webpack, Vite...) ou require(), a lib também funciona como módulo CommonJS
+    if (typeof module === 'object' && module.exports) module.exports = window.JetDnD;
 })();

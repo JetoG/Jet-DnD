@@ -102,6 +102,8 @@ const dnd = JetDnD.init({
 | `dragThreshold` | `4` | How many pixels the pointer must move for a click to become a drag. |
 | `longPressDelay` | `400` | On touch, how long (in ms) to hold the finger down to pick up a card without a handle. |
 | `accepts` | `null` | Function `(card, dropzone, from) => true/false` that decides whether the card can go into the dropzone. See [Groups and rules](#groups-and-rules-where-each-card-can-go). |
+| `actions` | `{}` | Functions that `data-jt-drop` can call, by name: `{ markAsDone }`. See [Reacting to a drag](#reacting-to-a-drag). |
+| `globalDropActions` | `true` | Should `data-jt-drop` also look for global functions? Use `false` if the HTML can contain user-generated content. |
 | `autoScroll` | `true` | Scrolls automatically when close to the edge of a scrollable area (or of the window). |
 | `scrollEdge` | `40` | Size (in px) of the strip near the edge that triggers scrolling. |
 | `scrollSpeed` | `15` | Maximum auto-scroll speed (in px per frame). |
@@ -126,7 +128,13 @@ function markAsDone(detail) {
 }
 ```
 
-> The function must be **global**, just like functions used in `onclick=""`: declared with `function name() {}` or `window.name = ...`. A `const name = () => {}` is not found. The library only looks the function up by name and **never runs text as code**.
+> **Recommended:** register the function in the `actions` option of `init`. That way, an HTML attribute can only call the functions on that list:
+>
+> ```js
+> JetDnD.init({ actions: { markAsDone }, globalDropActions: false });
+> ```
+>
+> Without `actions`, the library also looks for a **global** function with that name (the v1.0 way), just like functions used in `onclick=""`: declared with `function name() {}` or `window.name = ...`. A `const name = () => {}` is not found, and browser functions such as `alert`, `fetch` or `open` are never called. If the page's HTML can contain user-generated content, use `globalDropActions: false`. The library only looks the function up by name and **never runs text as code**.
 
 **2. Functions in `init`:** one function for every drop.
 
@@ -271,10 +279,12 @@ const dnd = JetDnD.init(options); // Turns the library on and returns the instan
 
 dnd.destroy();                    // Turns it off: removes the listeners and cancels a drag in progress
 dnd.setMessages({ ... });         // Changes the screen reader messages
-dnd.options;                      // The options in use
+dnd.options;                      // The options in use (read-only: the object is frozen)
 
-JetDnD.version;                   // '1.0.0'
+JetDnD.version;                   // '1.1.0'
 ```
+
+- If a selector option is invalid, `init` throws an error (`SyntaxError` or `TypeError`) and doesn't set anything up on the page. Invalid numeric options (e.g. `scrollSpeed: -1`) fall back to the default, with a console warning.
 
 - Calling `init` again with the same selectors returns the existing instance (and logs a warning).
 - You can have different instances on the same page, with different selectors. Only one card is dragged at a time.
@@ -476,7 +486,7 @@ Modern browsers: **Chrome and Edge 104+, Firefox 112+ and Safari 15.5+** (2022 o
 ## Known limitations
 
 - **The card must be a direct child of the dropzone.** In `<ul class="jt-dropzone"><li><div class="jt-draggable">`, the `<li>` does not follow the card. In that case, put the class on the `<li>` itself.
-- **Parents with `transform`, `filter`, `perspective`, `contain` or `will-change`** change the reference of the `position: fixed` used while dragging, and the card may appear offset. Parents that create a stacking context (with `z-index`, `opacity` below 1...) can keep the dragged card behind other elements.
+- **Parents with `transform: scale()`** (or `rotate()`) distort the card while dragging. Offsets (`translate`) and parents with `filter`, `perspective`, `contain` or `will-change` are compensated by the library. Parents that create a stacking context (with `z-index`, `opacity` below 1...) can keep the dragged card behind other elements.
 - **Don't re-render the list during a drag.** If a framework (React, Vue...) or a page update replaces the list's HTML in the middle of a drag, the card and the clone get lost. Use the `jt-drag-start` event to pause updates and `jt-drag-end` to resume them.
 - **`flex-direction: row-reverse` and `column-reverse`** are not supported: the visual order is reversed compared to the HTML order.
 - **With the keyboard,** the ↑ ↓ arrows move one position at a time, in a grid too.
@@ -484,11 +494,17 @@ Modern browsers: **Chrome and Edge 104+, Firefox 112+ and Safari 15.5+** (2022 o
 ## Project structure
 
 ```
-jet-dnd.js      ← the library (the only file you need)
-docs/           ← the demo (published on GitHub Pages)
+jet-dnd.js                ← the library (the only file you need)
+docs/                     ← the demo (published on GitHub Pages)
 ├── index.html
 ├── style.css
 └── demo.js
+tests/                    ← automated tests (Playwright)
+├── demo.spec.js          ← the demo with mouse, touch and keyboard
+├── edge-cases.spec.js    ← edge cases (one test for each fixed bug)
+└── helpers.js
+package.json              ← only for the tests (the library has no build and no dependencies)
+playwright.config.js
 ```
 
 To run the demo on your computer, clone the repository and, inside its folder, run:
@@ -509,9 +525,19 @@ Contributions are welcome! Open an issue or send a pull request:
 4. Push the branch (`git push origin my-improvement`).
 5. Open a pull request.
 
+### Automated tests
+
+The tests run the library in real browsers (Chromium, Firefox and WebKit, Safari's engine). You need [Node.js](https://nodejs.org/):
+
+```sh
+npm install
+npx playwright install    # downloads the browsers (first time only)
+npm test
+```
+
 ### Manual test checklist
 
-Before sending a change to the library, check in the demo:
+Automated tests don't replace a real phone. Before sending a change to the library, also check in the demo:
 
 - [ ] Simple click without dragging: the card doesn't change size or style.
 - [ ] Dragging between columns and reordering inside a column: the ghost lands in the right place.

@@ -7,18 +7,25 @@
 // A demo mostra as três formas de reagir a um drop:
 // 1. onDrop (aqui no init): atualiza os contadores das colunas do quadro e
 //    desmarca a tarefa como feita quando ela sai da coluna "Feito";
-// 2. data-jt-drop="marcarComoFeito" (na coluna "Feito", no HTML): chama a função marcarComoFeito;
+// 2. data-jt-drop="marcarComoFeito" (na coluna "Feito", no HTML): chama a função marcarComoFeito,
+//    registrada na opção actions;
 // 3. addEventListener('jt-drop') (mais abaixo): escreve no painel de eventos.
+// As regras usam o data-status das colunas (e não o data-name, que é a chave da tradução):
+// assim, mudar um texto ou uma chave de tradução nunca muda o comportamento do quadro
 const dnd = JetDnD.init({
     // Alças: o ícone ⠿ (.jt-handle) e também títulos marcados com .title-handle.
     // Mostra que a alça pode ser qualquer elemento, com uma classe que já existe no HTML
     handle: '.jt-handle, .title-handle',
 
+    // Funções que o data-jt-drop pode chamar (só as daqui: um atributo HTML não chama outras)
+    actions: { marcarComoFeito },
+    globalDropActions: false,
+
     // Regra livre: a coluna "Feito" só aceita tarefas que vieram de "Fazendo".
     // (A coluna de origem sempre aceita o card de volta, então dá para reordenar dentro de "Feito")
-    accepts: (card, to, from) => to.dataset.name !== 'col.done' || from?.dataset.name === 'col.doing',
+    accepts: (card, to, from) => to.dataset.status !== 'done' || from?.dataset.status === 'doing',
     onDrop: (detail) => {
-        let leftDone = detail.from.dataset.name === 'col.done' && detail.to.dataset.name !== 'col.done';
+        let leftDone = detail.from.dataset.status === 'done' && detail.to.dataset.status !== 'done';
         if (leftDone) detail.card.classList.remove('is-done');
         updateCounts();
     },
@@ -26,7 +33,7 @@ const dnd = JetDnD.init({
 
 /**
  - Chamada pelo data-jt-drop da coluna "Feito": risca a tarefa.
- - Precisa ser global (declarada com function) para a lib achar pelo nome, igual ao onclick=""
+ - Registrada na opção actions do init (por isso a lib acha pelo nome)
  - @param {Object} detail - Informações do drop ({ card, from, to, oldIndex, newIndex })
  */
 function marcarComoFeito(detail) {

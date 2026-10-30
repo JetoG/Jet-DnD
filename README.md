@@ -102,6 +102,8 @@ const dnd = JetDnD.init({
 | `dragThreshold` | `4` | Quantos pixels o ponteiro precisa andar para o clique virar arrasto. |
 | `longPressDelay` | `400` | No toque, quanto tempo (em ms) segurar o dedo para pegar um card sem alça. |
 | `accepts` | `null` | Função `(card, dropzone, from) => true/false` que decide se o card pode cair na dropzone. Veja [Grupos e regras](#grupos-e-regras-onde-cada-card-pode-cair). |
+| `actions` | `{}` | Funções que o `data-jt-drop` pode chamar, pelo nome: `{ marcarComoConcluida }`. Veja [Reagindo ao arrasto](#reagindo-ao-arrasto). |
+| `globalDropActions` | `true` | O `data-jt-drop` também procura funções globais? Use `false` se o HTML puder ter conteúdo vindo de usuários. |
 | `autoScroll` | `true` | Rola sozinho ao chegar perto da borda de uma área com rolagem (ou da janela). |
 | `scrollEdge` | `40` | Tamanho (em px) da faixa perto da borda que faz rolar. |
 | `scrollSpeed` | `15` | Velocidade máxima do auto-scroll (em px por quadro). |
@@ -126,7 +128,13 @@ function marcarComoConcluida(detail) {
 }
 ```
 
-> A função precisa ser **global**, igual às funções usadas no `onclick=""`: declarada com `function nome() {}` ou `window.nome = ...`. Um `const nome = () => {}` não é encontrado. A lib só procura a função pelo nome e **nunca executa texto como código**.
+> **Recomendado:** registre a função na opção `actions` do `init`. Assim, um atributo HTML só consegue chamar as funções dessa lista:
+>
+> ```js
+> JetDnD.init({ actions: { marcarComoConcluida }, globalDropActions: false });
+> ```
+>
+> Sem `actions`, a lib também procura uma função **global** com esse nome (o jeito da v1.0), igual às funções usadas no `onclick=""`: declarada com `function nome() {}` ou `window.nome = ...`. Um `const nome = () => {}` não é encontrado, e funções do navegador como `alert`, `fetch` ou `open` nunca são chamadas. Se o HTML da página puder ter conteúdo vindo de usuários, use `globalDropActions: false`. A lib só procura a função pelo nome e **nunca executa texto como código**.
 
 **2. Funções no `init`:** uma função para todos os drops.
 
@@ -271,10 +279,12 @@ const dnd = JetDnD.init(opcoes);  // Liga a lib e devolve a instância
 
 dnd.destroy();                    // Desliga: remove os listeners e cancela um arrasto em andamento
 dnd.setMessages({ ... });         // Troca as mensagens para leitores de tela
-dnd.options;                      // As opções em uso
+dnd.options;                      // As opções em uso (só leitura: o objeto é congelado)
 
-JetDnD.version;                   // '1.0.0'
+JetDnD.version;                   // '1.1.0'
 ```
+
+- Se um seletor das opções for inválido, o `init` lança um erro (`SyntaxError` ou `TypeError`) e não liga nada na página. Opções numéricas inválidas (ex.: `scrollSpeed: -1`) voltam ao padrão, com um aviso no console.
 
 - Chamar `init` de novo com os mesmos seletores devolve a instância que já existe (e mostra um aviso no console).
 - Dá para ter instâncias diferentes na mesma página, com seletores diferentes. Só um card é arrastado por vez.
@@ -476,7 +486,7 @@ Navegadores modernos: **Chrome e Edge 104+, Firefox 112+ e Safari 15.5+** (de 20
 ## Limitações conhecidas
 
 - **O card precisa ser filho direto da dropzone.** Em `<ul class="jt-dropzone"><li><div class="jt-draggable">`, o `<li>` não acompanha o card. Nesse caso, coloque a classe no próprio `<li>`.
-- **Pais com `transform`, `filter`, `perspective`, `contain` ou `will-change`** mudam a referência do `position: fixed` usado durante o arrasto, e o card pode aparecer deslocado. Pais que criam um contexto de empilhamento (com `z-index`, `opacity` menor que 1...) podem deixar o card arrastado atrás de outros elementos.
+- **Pais com `transform: scale()`** (ou `rotate()`) distorcem o card durante o arrasto. Deslocamentos (`translate`) e pais com `filter`, `perspective`, `contain` ou `will-change` são compensados pela lib. Pais que criam um contexto de empilhamento (com `z-index`, `opacity` menor que 1...) podem deixar o card arrastado atrás de outros elementos.
 - **Não redesenhe a lista durante um arrasto.** Se um framework (React, Vue...) ou uma atualização da página trocar o HTML da lista no meio do arrasto, o card e o clone se perdem. Use o evento `jt-drag-start` para pausar atualizações e o `jt-drag-end` para retomar.
 - **`flex-direction: row-reverse` e `column-reverse`** não são suportados: a ordem visual fica invertida em relação à ordem do HTML.
 - **Pelo teclado,** as setas ↑ ↓ andam uma posição por vez, inclusive em grade.
@@ -484,11 +494,17 @@ Navegadores modernos: **Chrome e Edge 104+, Firefox 112+ e Safari 15.5+** (de 20
 ## Estrutura do projeto
 
 ```
-jet-dnd.js      ← a biblioteca (o único arquivo necessário)
-docs/           ← a demonstração (publicada no GitHub Pages)
+jet-dnd.js                ← a biblioteca (o único arquivo necessário)
+docs/                     ← a demonstração (publicada no GitHub Pages)
 ├── index.html
 ├── style.css
 └── demo.js
+tests/                    ← testes automáticos (Playwright)
+├── demo.spec.js          ← a demonstração com mouse, toque e teclado
+├── edge-cases.spec.js    ← casos extremos (um teste para cada bug corrigido)
+└── helpers.js
+package.json              ← só para os testes (a lib não tem build nem dependências)
+playwright.config.js
 ```
 
 Para rodar a demonstração no seu computador, clone o repositório e, na pasta dele, rode:
@@ -509,9 +525,19 @@ Contribuições são bem-vindas! Abra uma issue ou envie um pull request:
 4. Envie a branch (`git push origin minha-melhoria`).
 5. Abra um pull request.
 
+### Testes automáticos
+
+Os testes rodam a lib em navegadores de verdade (Chromium, Firefox e WebKit, o motor do Safari). Precisa do [Node.js](https://nodejs.org/):
+
+```sh
+npm install
+npx playwright install    # baixa os navegadores (só na primeira vez)
+npm test
+```
+
 ### Checklist de testes manuais
 
-Antes de enviar uma mudança na lib, confira na demonstração:
+Os testes automáticos não substituem um celular de verdade. Antes de enviar uma mudança na lib, confira também na demonstração:
 
 - [ ] Clique simples sem arrastar: o card não muda de tamanho nem de estilo.
 - [ ] Arrastar entre colunas e reordenar dentro de uma coluna: o fantasma fica no lugar certo.

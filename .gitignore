@@ -18,3 +18,7 @@
 .ionide
 
 # End
+### Node (testes) ###
+node_modules/
+test-results/
+playwright-report/
